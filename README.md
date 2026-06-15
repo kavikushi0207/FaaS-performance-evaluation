@@ -1,10 +1,10 @@
 Resume/JD Matcher API: A FaaS Performance Evaluation
 
-📌 Project Overview
+# 📌 Project Overview
 
 This project implements a Serverless HTTP API designed to analyze resumes against job descriptions (JD). It utilizes Natural Language Processing (NLP) to return a match score and identifies "skill gaps" to provide career insights. The core objective of this study is to benchmark Function-as-a-Service (FaaS) behaviors, specifically focusing on cold vs. warm start latency, horizontal scaling, and resource management within a Kubernetes environment.
 
-🏗 System Architecture
+# 🏗 System Architecture
 
 The system follows a containerized microservices pattern:
 
@@ -21,9 +21,9 @@ The system follows a containerized microservices pattern:
 * Orchestration: Managed by Kubernetes (Minikube) with automated scaling.
 
 
-🚀 Getting Started
+# 🚀 Getting Started
 
- Prerequisites
+ ## Prerequisites
  
 * Docker Desktop
 
@@ -31,7 +31,7 @@ The system follows a containerized microservices pattern:
 
 * Azure Functions Core Tools
 
-Deployment Steps into docker
+## Deployment Steps into Docker
 
 1. Build the Image:
 
@@ -53,9 +53,9 @@ Deployment Steps into docker
    ```
     minikube service resume-matcher-service --url
    ```
-Deployment to the azure cloud
+## Deployment to the Azure cloud
 
-## 1. Azure Container Registry (ACR) Deployment
+### 1. Azure Container Registry (ACR) Deployment
 
 The first step is to move the locally built Docker image (`resume-matcher-v1`) into the Azure cloud. We tagged the local image for our Azure registry, authenticated, and pushed the image.
 
@@ -76,7 +76,7 @@ docker push polimiregistry.azurecr.io/resume-matcher:v1
 ```
 az acr credential show
 ```
-## 2. Provisioning the Cloud Infrastructure
+### 2. Provisioning the Cloud Infrastructure
 
 Instead of manually configuring a Kubernetes cluster, we utilized Azure Container Apps. First, we created the managed environment (the underlying network and cluster), and then deployed the Container App with built-in KEDA autoscaling rules (scaling from 1 to 10 replicas).
 
@@ -104,51 +104,49 @@ az containerapp create \
   --min-replicas 1 \
   --max-replicas 10
 ```
-## 3. Deploying Code Updates (v2)
+### 3. Deploying Code Updates (v2)
 After enhancing the NLP model, we needed to deploy the new code without causing downtime. We achieved this by building a v2 image and issuing an update command to Azure, which safely rolled out the new containers.
 
-### Build and push the new image version
+#### Build and push the new image version
 ```
 docker build --platform linux/amd64 -t polimiregistry.azurecr.io/resume-matcher:v2 .
 docker push polimiregistry.azurecr.io/resume-matcher:v2
 ```
-### Update the running Container App with the new image
+#### Update the running Container App with the new image
 ```
 az containerapp update \
   --name resumematcher-app \
   --resource-group faas_project \
   --image polimiregistry.azurecr.io/resume-matcher:v2
   ```
-### Test run of docker image:
+#### Test run of docker image:
 ```
 curl -X POST https://<FQDN>/api/match \
   -H "Content-Type: application/json" \
   -d '{"resume": "Software engineer with 5 years of experience in Python, Azure, and Docker.", "jd": "Looking for a backend developer skilled in Python and cloud infrastructure."}'
 ```
-### Our FQDN: 
+#### Our FQDN: 
 ```
 resumematcher-app.redsmoke-cd88e19a.francecentral.azurecontainerapps.io
 ```
-## 4. Performance Benchmarking & Evaluation
+###  4. Performance Benchmarking & Evaluation
  
-
-📊 Performance Evaluation Metrics
-
 We utilized Apache JMeter to simulate concurrent users and evaluate the system's reliability and scalability. The evaluation focused on three primary test scenarios to analyze the behavior of the FaaS architecture.
 
-### Installing jmeter to mac
+#### Installing JMeter on Mac
 ```
 brew install jmeter 
 ```
-### Open the software
+#### Open the software
 ```
 jmeter
 ```
-## JMeter Performance Testing Setup
+---
+### 📊 JMeter Performance Testing Setup
 
-Follow these steps to configure your JMeter test plan for the Azure FaaS application. We will start with a safe baseline test before scaling up to a full stress test.
+Follow these steps to configure our JMeter test plan for the Azure FaaS application. We will start with a safe baseline test before scaling up to a full stress test.
 
-### Step 1: Create the "Users" (Thread Group)
+#### Step 1: Create the "Users" (Thread Group)
 
 A "Thread Group" is JMeter's way of representing a group of users.
 
@@ -164,7 +162,7 @@ A "Thread Group" is JMeter's way of representing a group of users.
 
 ---
 
-### Step 2: Set up the API Call (HTTP Request)
+#### Step 2: Set up the API Call (HTTP Request)
 
 Next, we need to instruct the simulated users on what specific actions to perform.
 
@@ -186,8 +184,40 @@ JSON
   "jd": "Looking for a backend developer skilled in Python, cloud infrastructure, and building scalable API endpoints."
 }
 ```
-note: to  be updated...
+---
+#### Step 3: Add the JSON Header
 
+Because we are sending JSON data, we must explicitly inform Azure of the payload format. Otherwise, your backend Python script will reject the request.
+
+1. **Right-click** on our **HTTP Request** in the left sidebar.
+2. Hover over **Add** > **Config Element** > and click **HTTP Header Manager**.
+3. Click on the new **HTTP Header Manager** in the left sidebar.
+4. At the bottom of the main window, click the **Add** button.
+5. In the new row that appears, enter exactly:
+   * **Name:** `Content-Type`
+   * **Value:** `application/json`
+
+---
+
+#### Step 4: Add the Dashboards (Listeners)
+
+To evaluate the results of the test, we need to set up "Listeners" in JMeter.
+
+1. **Right-click** on the **Thread Group** in the left sidebar.
+2. Hover over **Add** > **Listener** > and click **View Results Tree**. 
+   *(This allows ou to inspect the exact response Azure returns to verify successful executions versus errors.*
+3. **Right-click** our **Thread Group** again.
+4. Hover over **Add** > **Listener** > and click **Summary Report**. 
+   *(This provides the average response times, throughput, and error percentages needed for our project evaluation).*
+
+---
+
+#### Step 5: Run the Test
+
+1. Click on **View Results Tree** in the left sidebar so we can monitor the requests in real-time.
+2. Look at the top toolbar and click the **Green Play Button** (Start).
+3. JMeter will prompt the test plan to save  before executing. Save it as `FaaS-Test.jmx` in a preferred directory on the local machine.
+---
 As part of our research, we are supposed to evaluate the following metrics:
 
 
@@ -200,17 +230,15 @@ As part of our research, we are supposed to evaluate the following metrics:
 * Scalability
 
 
-* Reliability
 
-
-🛠 Troubleshooting & Insights
+# 🛠 Troubleshooting & Insights
 
 * Auth Level: Set to ANONYMOUS for localized benchmarking to eliminate security handshake overhead.
 
 * Resource Constraints: Identified that emulated x86_64 environments on ARM64 hosts require higher CPU/RAM quotas to prevent SIGABRT errors.
 
-👥 Team
+# 👥 Team
 
 * **Member 1**: [Kavini Pathagamage](https://github.com/kavikushi0207): Infrastructure setup, Dockerization, K8s Orchestration, CI/CD basics, Azure deployment and test bed setup, Analyzing test results
 
-* **Member 2**: [Taniya Afreen](https://github.com/taanyaafreen): Logic/Model development, Test dataset preparation, and Performance experiment design, Analyzing test results
+* **Member 2**: [Taniya Afreen](https://github.com/taanyaafreen): Logic/Model development, Model Enhancement, Test dataset preparation, and Performance experiment design, Analyzing test results
