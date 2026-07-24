@@ -16,20 +16,29 @@ The system follows a containerized microservices pattern:
 
 
 * Containerization: Packaged via Docker (emulated for linux/amd64 compatibility).
+* Cloud Deployment: Deploying the containerized image into Azure Container Registry
 
 
-* Orchestration: Managed by Kubernetes (Minikube) with automated scaling.
+
+* Automated Orchestration: Managed by KEDA inside Azure Container Registry
+* Testing with JMeter to evaluate the FaaS performance under variant criteria
+
+<img width="1570" height="614" alt="sys-arch" src="https://github.com/user-attachments/assets/dc20a989-7a76-4d34-b8f4-2390c262d2c5" />
 
 
 # 🚀 Getting Started
 
  ## Prerequisites
  
-* Docker Desktop
-
-* Minikube & kubectl
-
+* Docker Desktop 
+* Minikube & kubectl (for local testing)
 * Azure Functions Core Tools
+* Azure Cloud Services
+  1. Resource Group
+  2. Container Registry (and KEDA inside for auto-scaling)
+  3. Container App
+  4. Virtual Machine
+* Jmeter
 
 ## Deployment Steps into Docker
 
@@ -133,9 +142,9 @@ resumematcher-app.redsmoke-cd88e19a.francecentral.azurecontainerapps.io
  
 We utilized Apache JMeter to simulate concurrent users and evaluate the system's reliability and scalability. The evaluation focused on three primary test scenarios to analyze the behavior of the FaaS architecture.
 
-#### Installing JMeter on Mac
+#### Installing JMeter on Mac (for creating tests in GUI mode)
 ```
-brew install jmeter 
+sudo install jmeter 
 ```
 #### Open the software
 ```
@@ -143,93 +152,36 @@ jmeter
 ```
 ---
 ### 📊 JMeter Performance Testing Setup
+## Performance Evaluation Strategy
 
-Follow these steps to configure our JMeter test plan for the Azure FaaS application. We will start with a safe baseline test before scaling up to a full stress test.
+Following the benchmarking principles from the computing infrastructure course (Polimi, Prof. Danilo Ardagna), our testing strategy moves beyond simple baseline testing. We evaluate the Azure serverless application using the following scenarios, visualizing all metrics through the JMeter HTML Dashboard:
 
-#### Step 1: Create the "Users" (Thread Group)
-
-A "Thread Group" is JMeter's way of representing a group of users.
-
-1. Look at the left sidebar and **right-click** on the beaker icon named `FaaS testing attempt 1`.
-2. Hover over **Add** > **Threads (Users)** > and click **Thread Group**.
-3. Click on the new **Thread Group** that appears in the left sidebar.
-4. In the main window, set the following values to run a safe baseline test:
-   * **Number of Threads (users):** `10`
-   * **Ramp-up period (seconds):** `10`
-   * **Loop Count:** `1` 
-   
-   *(Note: This configures JMeter to send 10 users to the API spread evenly over 10 seconds. We will increase this to 500 later for the stress test.)*
+* **Cold vs. Warm Starts:** Measuring the initial latency overhead when the Azure container scales from zero, compared to the execution time of an already provisioned instance.
+* **Load & Stress Testing:** Incrementally increasing concurrent users to identify the system's saturation point, throughput limits, and degradation curve.
+* **Spike Testing:** Simulating sudden, massive surges in traffic to evaluate how rapidly the FaaS autoscaler provisions new instances.
+* **Payload & Mixed Workload Testing:** Varying the size of the JSON request body and combining different API request patterns to mimic real-world usage.
+* **Pareto Analysis:** Using the generated dashboard data to identify the 20% of performance bottlenecks that are causing 80% of the latency or failure issues.
 
 ---
 
-#### Step 2: Set up the API Call (HTTP Request)
+## Setting up JMeter on the Azure VM
 
-Next, we need to instruct the simulated users on what specific actions to perform.
+To ensure accurate latency measurements and avoid local network jitter, a dedicated testing VM is deployed inside the Azure Resource Group. 
 
-1. **Right-click** on a new Thread Group in the left sidebar.
-2. Hover over **Add** > **Sampler** > and click **HTTP Request**.
-3. Click on the new **HTTP Request** in the left sidebar.
-4. In the main window, configure the exact details of the request:
-   * **Protocol:** `https`
-   * **Server Name or IP:** Paste the Azure FQDN here (e.g., `resumematcher-app.proudriver-abcd123.northeurope.azurecontainerapps.io`). *Note: Do NOT include `https://` in this box!*
-   * **HTTP Request Method:** Change the dropdown from `GET` to `POST`.
-   * **Path:** `/api/match`
-5. Look below the Path box and click the **Body Data** tab.
-6. Paste this test JSON directly into the empty text area:
+Once the standard Ubuntu Linux VM is running, SSH into it and execute the following commands to prepare the environment:
 
+```bash
+# 1. Update packages and install Java (Required for JMeter)
+sudo apt-get update
+sudo apt-get install -y default-jre
+
+# 2. Download and extract the latest JMeter binary
+wget [https://dlcdn.apache.org//jmeter/binaries/apache-jmeter-5.6.3.tgz](https://dlcdn.apache.org//jmeter/binaries/apache-jmeter-5.6.3.tgz)
+tar -xf apache-jmeter-5.6.3.tgz
+
+# 3. Add JMeter to the system path for easier execution
+export PATH=$PATH:~/apache-jmeter-5.6.3/bin
 ```
-JSON
-{
-  "resume": "Software engineer with 5 years of experience in Python, Azure, and Docker. Strong background in FaaS and system reliability.",
-  "jd": "Looking for a backend developer skilled in Python, cloud infrastructure, and building scalable API endpoints."
-}
-```
----
-#### Step 3: Add the JSON Header
-
-Because we are sending JSON data, we must explicitly inform Azure of the payload format. Otherwise, your backend Python script will reject the request.
-
-1. **Right-click** on our **HTTP Request** in the left sidebar.
-2. Hover over **Add** > **Config Element** > and click **HTTP Header Manager**.
-3. Click on the new **HTTP Header Manager** in the left sidebar.
-4. At the bottom of the main window, click the **Add** button.
-5. In the new row that appears, enter exactly:
-   * **Name:** `Content-Type`
-   * **Value:** `application/json`
-
----
-
-#### Step 4: Add the Dashboards (Listeners)
-
-To evaluate the results of the test, we need to set up "Listeners" in JMeter.
-
-1. **Right-click** on the **Thread Group** in the left sidebar.
-2. Hover over **Add** > **Listener** > and click **View Results Tree**. 
-   *(This allows ou to inspect the exact response Azure returns to verify successful executions versus errors.*
-3. **Right-click** our **Thread Group** again.
-4. Hover over **Add** > **Listener** > and click **Summary Report**. 
-   *(This provides the average response times, throughput, and error percentages needed for our project evaluation).*
-
----
-
-#### Step 5: Run the Test
-
-1. Click on **View Results Tree** in the left sidebar so we can monitor the requests in real-time.
-2. Look at the top toolbar and click the **Green Play Button** (Start).
-3. JMeter will prompt the test plan to save  before executing. Save it as `FaaS-Test.jmx` in a preferred directory on the local machine.
----
-As part of our research, we are supposed to evaluate the following metrics:
-
-
-* Cold Start Latency
-
-
-* Warm Start Latency
-
-
-* Scalability
-
-
 
 # 🛠 Troubleshooting & Insights
 
@@ -239,6 +191,6 @@ As part of our research, we are supposed to evaluate the following metrics:
 
 # 👥 Team
 
-* **Member 1**: [Kavini Pathagamage](https://github.com/kavikushi0207): Infrastructure setup, Dockerization, K8s Orchestration, CI/CD basics, Azure deployment and test bed setup, Analyzing test results
+* **Member 1**: [Kavini Pathagamage](https://github.com/kavikushi0207): Infrastructure setup, Dockerization, K8s Orchestration, CI/CD basics, Azure deployment and test bed setup, Experimenting and Analyzing test results
 
-* **Member 2**: [Taniya Afreen](https://github.com/taanyaafreen): Logic/Model development, Model Enhancement, Test dataset preparation, and Performance experiment design, Analyzing test results
+* **Member 2**: [Taniya Afreen](https://github.com/taanyaafreen): Logic/Model development, Model Enhancement, Test dataset preparation, and Performance experiment design, Experimenting and  Analyzing test results
